@@ -1,0 +1,780 @@
+---
+title: "Biochar Consulting"
+author: "Emily Mai"
+date: "4/30/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+# download necessary libraries
+# install.packages("rstatix")
+# install.packages("ggplot2")
+# install.packages("gridExtra")
+# install.packages("dae")
+# install.packages("ggpubr")
+```
+
+```{r, include=FALSE}
+library(ggplot2)
+library(dplyr)
+# library(rstatix)
+library(readxl)
+# library(reshape2)
+library(gridExtra)
+# library(ggpubr)
+library(MASS)
+library(dae)
+library(emmeans)
+```
+
+## Read and format data
+```{r}
+# read in data
+bc_data <- read_excel("C:/Users/Emily Mai/Downloads/biochar study data.xls")
+
+# rename columns for ease of access
+bc_data <- bc_data %>%
+  rename(shoot_weight = `shoot weight (g)`,
+         shallow_root_weight = `shallow root weight (g)`,
+         deep_root_weight = `deep root weight (g)`,
+         total_root_weight = `total root weight`,
+         root_shoot_ratio = `root:shoot ratio`) %>%
+  na.omit()
+
+attach(bc_data)
+names(bc_data)
+bc_data <- subset(bc_data, select = -c(rep, type))
+```
+
+## Box Plots for Shoot Weight
+```{r}
+plot_shoot_weight <- bc_data[c("Wheat","Soil","Biochar","shoot_weight")]
+
+g1 <- ggplot(data=plot_shoot_weight) +
+  geom_boxplot(aes(x=Wheat, y=shoot_weight, fill=Wheat)) +
+  scale_fill_manual(values=c("tan1", "steelblue2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g2 <- ggplot(data=plot_shoot_weight) +
+  geom_boxplot(aes(x=Soil, y=shoot_weight, fill=Soil)) +
+  scale_fill_manual(values=c("cornsilk", "plum2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g3 <- ggplot(data=plot_shoot_weight) +
+  geom_boxplot(aes(x=Biochar, y=shoot_weight, fill=Biochar)) +
+  scale_fill_manual(values=c("bisque", "cyan3")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+
+grid.arrange(g1, g2, g3, nrow=1, top="Box Plot of Shoot Weight")
+```
+
+# Shoot Weight
+NOTE: All models and analysis performed below is for shoot weight only
+
+## Fit Full Model
+```{r}
+# fit full model
+SW_model <- aov(shoot_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SW_model)
+```
+
+### Perform Box-Cox Transformation
+```{r}
+T <- boxcox(shoot_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+lambda <- T$x[which(T$y == max(T$y))]
+```
+
+### Refit and Check Assumptions after Transformation
+```{r, message=F}
+shoot_weight_t <- shoot_weight**lambda
+
+# refit model
+SW_model_new <- aov(shoot_weight_t ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+
+# check assumptions
+plot(SW_model_new)
+```
+
+### Check for 3-way Interactions
+```{r}
+anova(SW_model_new)
+```
+**Remove 3 way interaction**
+
+## Fit Model 2
+```{r}
+# fit full model
+SW_model2 <- aov(shoot_weight_t ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SW_model2)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SW_model2)
+```
+**Remove Wheat:Biochar interaction**
+
+## Fit Model 3
+```{r}
+# fit full model
+SW_model3 <- aov(shoot_weight_t ~ Wheat + Soil + Biochar + Wheat*Soil + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SW_model3)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SW_model3)
+```
+**Remove Soil:Biochar interaction**
+
+## Fit Model 4
+```{r}
+# fit full model
+SW_model4 <- aov(shoot_weight_t ~ Wheat + Soil + Biochar + Wheat*Soil, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SW_model4)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SW_model4)
+```
+**Remove Biochar**
+
+## Fit Model 5
+```{r}
+# fit full model
+SW_model5 <- aov(shoot_weight_t ~ Wheat + Soil + Wheat*Soil, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SW_model5)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SW_model5)
+```
+**Final Model: Order 2 with interaction**
+
+## Final Model: Shoot Weight = Wheat + Soil + Wheat*Soil
+```{r}
+interaction.plot(Soil, Wheat, shoot_weight_t)
+```
+
+### Multiple Comparison
+```{r}
+# compare the effect of Wheat at each level of Soil 
+emmeans(SW_model5, list(pairwise ~ Wheat|Soil)) 
+```
++ The effect of wheat is significant when soil type is "soil-sand" (p-value = 0.0012 < 0.05) in terms of shoot weight.
+
+```{r}
+# compare the effect of Soil at each level of Wheat
+emmeans(SW_model5, list(pairwise ~ Soil|Wheat))
+```
++ The effect of Soil is significant at each level of wheat type (both p-value < 0.0001) in terms of shoot weight.
+
+# Shallow Root Weight
+NOTE: All models and analysis performed below is for shoot weight only
+
+## Box Plot Shallow Root Weight
+```{r}
+plot_shallow_root_weight <- bc_data[c("Wheat","Soil","Biochar","shallow_root_weight")]
+gg_object <- ggplot(data=plot_shallow_root_weight)
+
+g1 <- gg_object +
+  geom_boxplot(aes(x=Wheat, y=shallow_root_weight, fill=Wheat)) +
+  scale_fill_manual(values=c("tan1", "steelblue2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g2 <- gg_object +
+  geom_boxplot(aes(x=Soil, y=shallow_root_weight, fill=Soil)) +
+  scale_fill_manual(values=c("cornsilk", "plum2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g3 <- gg_object +
+  geom_boxplot(aes(x=Biochar, y=shallow_root_weight, fill=Biochar)) +
+  scale_fill_manual(values=c("bisque", "cyan3")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+
+grid.arrange(g1, g2, g3, nrow=1, top="Box Plot of Shallow Root Weight")
+```
+
+## Fit Full Model
+```{r}
+# fit full model
+SRW_model <- aov(shallow_root_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SRW_model)
+```
+**Transformation not necessary**
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SRW_model)
+```
+**Remove 3 way interaction**
+
+## Fit Model 2
+```{r}
+# fit full model
+SRW_model2 <- aov(shallow_root_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SRW_model2)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SRW_model2)
+```
+**Remove Wheat:Biochar interaction**
+
+## Fit Model 3
+```{r}
+# fit full model
+SRW_model3 <- aov(shallow_root_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SRW_model3)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SRW_model3)
+```
+**Remove Wheat:Soil interaction**
+
+## Fit Model 4
+```{r}
+# fit full model
+SRW_model4 <- aov(shallow_root_weight ~ Wheat + Soil + Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SRW_model4)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SRW_model4)
+```
+**Remove Soil:Biochar**
+
+## Fit Model 5
+```{r}
+# fit full model
+SRW_model5 <- aov(shallow_root_weight ~ Wheat + Soil + Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SRW_model5)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SRW_model5)
+```
+**remove Wheat**
+
+## Fit Model 6
+```{r}
+# fit full model
+SRW_model6 <- aov(shallow_root_weight ~ Soil + Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(SRW_model6)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(SRW_model6)
+```
+**Final Model: Order 2 Model**
+
+## Final Model: Shallow Root Weight = Soil + Biochar
+
+### Compare main Effects
+```{r}
+TukeyHSD(SRW_model6)
+```
+```{r}
+emmeans(SRW_model6,list(pairwise ~ Soil))
+```
+```{r}
+emmeans(SRW_model6,list(pairwise ~ Biochar))
+```
+
+# Deep Root Weight
+NOTE: All models and analysis performed below is for deep root weight only
+
+## Box Plot for Deep Root Weight
+```{r}
+plot_deep_root_weight <- bc_data[c("Wheat","Soil","Biochar","deep_root_weight")]
+gg_object <- ggplot(data=plot_deep_root_weight)
+
+g1 <- gg_object +
+  geom_boxplot(aes(x=Wheat, y=deep_root_weight, fill=Wheat)) +
+  scale_fill_manual(values=c("tan1", "steelblue2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g2 <- gg_object +
+  geom_boxplot(aes(x=Soil, y=deep_root_weight, fill=Soil)) +
+  scale_fill_manual(values=c("cornsilk", "plum2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g3 <- gg_object +
+  geom_boxplot(aes(x=Biochar, y=deep_root_weight, fill=Biochar)) +
+  scale_fill_manual(values=c("bisque", "cyan3")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+
+grid.arrange(g1, g2, g3, nrow=1, top="Box Plot of Deep Root Weight")
+```
+
+## Fit Full Model
+```{r}
+# fit full model
+DRW_model <- aov(deep_root_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(DRW_model)
+```
+**Transformation is necessary**
+
+### Perform Box-Cox Transformation
+```{r}
+T1 <- boxcox(deep_root_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+lambda1 <- T1$x[which(T1$y == max(T1$y))]
+```
+
+### Refit and Check Assumptions after Transformation
+```{r, message=F}
+deep_root_weight_t <- deep_root_weight**lambda1
+
+# refit model
+DRW_model_new <- aov(deep_root_weight_t ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+
+# check assumptions
+plot(DRW_model_new)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(DRW_model_new)
+```
+**Remove 3 way interaction**
+
+## Fit Model 2
+```{r}
+# fit full model
+DRW_model2 <- aov(deep_root_weight_t~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(DRW_model2)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(DRW_model2)
+```
+**Remove Wheat:Biochar interaction**
+
+## Fit Model 3
+```{r}
+# fit full model
+DRW_model3 <- aov(deep_root_weight_t ~ Wheat + Soil + Biochar + Wheat*Soil + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(DRW_model3)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(DRW_model3)
+```
+**Remove Wheat:Soil interaction**
+
+## Fit Model 4
+```{r}
+# fit full model
+DRW_model4 <- aov(deep_root_weight_t ~ Wheat + Soil + Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(DRW_model4)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(DRW_model4)
+```
+**Remove Wheat**
+
+## Fit Model 5
+```{r}
+# fit full model
+DRW_model5 <- aov(deep_root_weight_t ~ Soil + Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(DRW_model5)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(DRW_model5)
+```
+**remove soil:biochar interaction**
+
+## Fit Model 6
+```{r}
+# fit full model
+DRW_model6 <- aov(deep_root_weight_t ~ Soil + Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(DRW_model6)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(DRW_model6)
+```
+**remove soil**
+
+## Fit Model 7
+```{r}
+# fit full model
+DRW_model7 <- aov(deep_root_weight_t ~ Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(DRW_model7)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(DRW_model7)
+```
+**Final Model: One-Way**
+
+## Final Model: Deep Root Weight = Biochar
+
+### Compare main effect
+```{r}
+TukeyHSD(DRW_model7)
+```
+```{r}
+emmeans(DRW_model7,list(pairwise ~ Biochar))
+```
+
+
+# Total Root Weight
+NOTE: All models and analysis performed below is for total root weight only
+
+## Box Plot for Total Root Weight
+```{r}
+plot_total_root_weight <- bc_data[c("Wheat","Soil","Biochar","total_root_weight")]
+gg_object <- ggplot(data=plot_total_root_weight)
+
+g1 <- gg_object +
+  geom_boxplot(aes(x=Wheat, y=total_root_weight, fill=Wheat)) +
+  scale_fill_manual(values=c("tan1", "steelblue2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g2 <- gg_object +
+  geom_boxplot(aes(x=Soil, y=total_root_weight, fill=Soil)) +
+  scale_fill_manual(values=c("cornsilk", "plum2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g3 <- gg_object +
+  geom_boxplot(aes(x=Biochar, y=total_root_weight, fill=Biochar)) +
+  scale_fill_manual(values=c("bisque", "cyan3")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+
+grid.arrange(g1, g2, g3, nrow=1, top="Box Plot of Total Root Weight")
+```
+
+## Fit Full Model
+```{r}
+# fit full model
+TRW_model <- aov(total_root_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(TRW_model)
+```
+
+### Check for 3-way Interactions
+```{r}
+anova(TRW_model)
+```
+**Remove 3 way interaction**
+
+## Fit Model 2
+```{r}
+# fit full model
+TRW_model_2 <- aov(total_root_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(TRW_model_2)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(TRW_model_2)
+```
+**Remove Wheat:Biochar interaction**
+
+## Fit Model 3
+```{r}
+# fit full model
+TRW_model_3 <- aov(total_root_weight ~ Wheat + Soil + Biochar + Wheat*Soil + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(TRW_model_3)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(TRW_model_3)
+```
+**Remove Wheat:Soil interaction**
+
+## Fit Model 4
+```{r}
+# fit full model
+TRW_model_4 <- aov(total_root_weight ~ Wheat + Soil + Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(TRW_model_4)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(TRW_model_4)
+```
+**Remove Wheat**
+
+## Fit Model 5
+```{r}
+# fit full model
+TRW_model_5 <- aov(total_root_weight ~ Soil + Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(TRW_model_5)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(TRW_model_5)
+```
+**Final Model: Order 2 Model with interaction **
+
+## Final Model: Total Root Weight = Soil + Biochar + Soil:Biochar
+```{r}
+interaction.plot(Biochar, Soil, total_root_weight)
+```
+
+### Multiple Comparison
+```{r}
+# compare the effect of Wheat at each level of Soil 
+emmeans(TRW_model_5, list(pairwise ~ Soil|Biochar)) 
+```
++ The effect of Soil is significant when Biochar treatment is "yes" (p-value = 0.0088 < 0.05) in terms of total root weight.
+
+```{r}
+# compare the effect of Soil at each level of Wheat
+emmeans(TRW_model_5, list(pairwise ~ Biochar|Soil))
+```
++ The effect of Biochar is significant when Soil type is "soil" (p-value = 0.0009 < 0.05) in terms of total root weight.
+
+# Root Shoot Ratio
+NOTE: All models and analysis performed below is for root shoot ratio only
+
+## Box Plot for Root Shoot Ratio
+```{r}
+plot_root_shoot_ratio <- bc_data[c("Wheat","Soil","Biochar","deep_root_weight")]
+gg_object <- ggplot(data=plot_root_shoot_ratio)
+
+g1 <- gg_object +
+  geom_boxplot(aes(x=Wheat, y=root_shoot_ratio, fill=Wheat)) +
+  scale_fill_manual(values=c("tan1", "steelblue2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g2 <- gg_object +
+  geom_boxplot(aes(x=Soil, y=root_shoot_ratio, fill=Soil)) +
+  scale_fill_manual(values=c("cornsilk", "plum2")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+g3 <- gg_object +
+  geom_boxplot(aes(x=Biochar, y=root_shoot_ratio, fill=Biochar)) +
+  scale_fill_manual(values=c("bisque", "cyan3")) +
+  theme(axis.text.x = element_blank(),axis.ticks = element_blank())
+
+grid.arrange(g1, g2, g3, nrow=1, top="Box Plot Root Shoot Ratio")
+```
+
+## Fit Full Model
+```{r}
+# fit full model
+RSR_model <- aov(root_shoot_ratio ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar + Wheat*Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(RSR_model)
+```
+
+### Check for 3-way Interactions
+```{r}
+anova(RSR_model)
+```
+**Remove 3 way interaction**
+
+## Fit Model 2
+```{r}
+# fit full model
+RSR_model_2 <- aov(root_shoot_ratio ~ Wheat + Soil + Biochar + Wheat*Soil + Wheat*Biochar + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(RSR_model_2)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(RSR_model_2)
+```
+**Remove Wheat:Biochar interaction**
+
+## Fit Model 3
+```{r}
+# fit full model
+RSR_model_3 <- aov(root_shoot_ratio ~ Wheat + Soil + Biochar + Wheat*Soil + Soil*Biochar, data=bc_data)
+```
+
+### Check Model Assumptions
+```{r, message=F}
+# check assumptions
+plot(RSR_model_3)
+```
+
+### Check for Nonsignificant Interactions
+```{r}
+anova(RSR_model_3)
+```
+**Final Model: 2-way with 2 interaction effect**
+
+## Final Model: Root Shoot Ratio = Wheat + Soil + Biochar + Wheat:Soil + Soil:Biochar
+```{r}
+interaction.plot(Soil, Biochar, root_shoot_ratio)
+interaction.plot(Soil, Wheat, root_shoot_ratio)
+```
+
+### Multiple Comparison
+```{r}
+# compare the effect of Wheat at each level of Soil 
+emmeans(RSR_model_3, list(pairwise ~ Wheat|Soil)) 
+```
++ The effect of Wheat is significant when Soil type is "soil-sand" (p-value = 0.0011 < 0.05) in terms of root shoot ratio.
+
+```{r}
+# compare the effect of Soil at each level of Wheat
+emmeans(RSR_model_3, list(pairwise ~ Soil|Wheat))
+```
++ The effect of Soil is significant at each level of Wheat type (both p-value < 0.05) in terms of root shoot ratio.
+
+```{r}
+# compare the effect of Wheat at each level of Soil 
+emmeans(RSR_model_3, list(pairwise ~ Soil|Biochar)) 
+```
++ The effect of Soil is significant when at each level of Biochar treatment (both p-value < 0.05) in terms of root shoot ratio.
+
+```{r}
+# compare the effect of Soil at each level of Wheat
+emmeans(RSR_model_3, list(pairwise ~ Biochar|Soil))
+```
++ The effect of Biochar is significant when Soil type is "soil" (p-value = 0.0002 < 0.05) in terms of root shoot ratio.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
